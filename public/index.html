@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0718" />
+  <title>邹宇乐生日快乐</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- 粒子背景 -->
+  <canvas id="bg"></canvas>
+
+  <!-- ==================== 主页面 ==================== -->
+  <div class="page active" id="page-main">
+    <div class="title-wrap">
+      <h1 class="art-title">
+        <span class="line1">邹宇乐</span>
+        <span class="line2">生日快乐</span>
+      </h1>
+      <p class="subtitle">愿你所愿皆成真</p>
+    </div>
+
+    <button class="view-btn" id="btnView">查看留言</button>
+  </div>
+
+  <!-- ==================== 留言页面 ==================== -->
+  <div class="page" id="page-msg">
+    <div class="msg-header">
+      <button class="back-btn" id="btnBack" aria-label="返回">←</button>
+      <h2>留言祝福</h2>
+      <span class="count" id="msgCount"></span>
+    </div>
+
+    <div class="msg-list" id="msgList"></div>
+
+    <div class="msg-input-bar">
+      <textarea id="msgInput" maxlength="300" placeholder="写下你的祝福……" rows="1"></textarea>
+      <button id="btnSend">发送</button>
+    </div>
+  </div>
+
+  <!-- ==================== 昵称弹窗 ==================== -->
+  <div class="modal" id="nickModal">
+    <div class="modal-card">
+      <h3>留下你的昵称</h3>
+      <p>让大家知道这份祝福来自谁 ✨</p>
+      <input id="nickInput" type="text" maxlength="16" placeholder="请输入昵称" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="ghost" id="btnCancel">取消</button>
+        <button class="primary" id="btnConfirm">发布留言</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
