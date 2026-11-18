@@ -2,7 +2,7 @@
    邹宇乐生日快乐 - 前端逻辑
    1. 粒子背景
    2. 页面切换
-   3. 留言板（fetch API + SSE 实时同步）
+   3. 留言板（浏览器本地存储）
    ========================================================= */
 
 
@@ -166,32 +166,9 @@
 
 
 /* =========================================================
-   三、留言板（后端同步）
+   三、留言板（浏览器本地存储）
    ========================================================= */
 (function () {
-  const API = {
-    list: function () {
-      return fetch('/api/messages', { cache: 'no-store' }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      });
-    },
-    send: function (nick, text) {
-      return fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nick: nick, text: text })
-      }).then(async function (r) {
-        if (!r.ok) {
-          let msg = '发送失败';
-          try { const j = await r.json(); msg = j.error || msg; } catch (e) {}
-          throw new Error(msg);
-        }
-        return r.json();
-      });
-    }
-  };
-
   const listEl = document.getElementById('msgList');
   const inputEl = document.getElementById('msgInput');
   const btnSend = document.getElementById('btnSend');
@@ -202,14 +179,12 @@
   const countEl = document.getElementById('msgCount');
   const toastEl = document.getElementById('toast');
 
+  const MESSAGES_KEY = 'zyl_birthday_messages_v1';
   const NICK_KEY = 'zyl_birthday_nick_v1';
 
-  let cache = [];          // 消息缓存（最新在前）
-  
-let pendingText = '';
+  let cache = [];
+  let pendingText = '';
   let toastTimer = null;
-  let sse = null;
-  let pollTimer = null;
 
   /* ---------- 工具 ---------- */
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -295,69 +270,28 @@ let pendingText = '';
     });
   }
 
-  function mergeMessage(msg) {
-    if (!msg || !msg.id) return false;
-    if (cache.some(function (m) { return m.id === msg.id; })) return false;
-    cache.push(msg);
-    cache = sortNewestFirst(cache);
-    return true;
-  }
+  function readMessages() {
+    const raw = localStorage.getItem(MESSAGES_KEY);
+    if (raw === null) return [];
 
-  function fetchList() {
-    return API.list()
-      .then(function (data) {
-        if (Array.isArray(data)) {
-          cache = sortNewestFirst(data);
-          render(true);
-        }
-      })
-      .catch(function (e) {
-        console.warn('加载留言失败:', e);
-      });
-  }
-
-  /* ---------- SSE 实时 ---------- */
-  function connectSSE() {
-    if (sse || !window.EventSource) {
-      if (!window.EventSource) startPolling();
-      return;
+    const messages = JSON.parse(raw);
+    if (!Array.isArray(messages)) {
+      throw new Error('本地留言数据格式无效');
     }
+    return messages;
+  }
 
+  function writeMessages(messages) {
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+  }
+
+  function refresh() {
     try {
-      sse = new EventSource('/api/stream');
-    } catch (e) {
-      startPolling();
-      return;
-    }
-
-    sse.addEventListener('hello', function () {
-      stopPolling();
-    });
-
-    sse.addEventListener('message', function (e) {
-      try {
-        const msg = JSON.parse(e.data);
-        if (mergeMessage(msg)) render(true);
-      } catch (err) {}
-    });
-
-    sse.onerror = function () {
-      if (sse.readyState === EventSource.CLOSED) {
-        startPolling();
-      }
-    };
-  }
-
-  function startPolling() {
-    if (pollTimer) return;
-    fetchList();
-    pollTimer = setInterval(fetchList, 8000);
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
+      cache = sortNewestFirst(readMessages());
+      render(true);
+    } catch (error) {
+      console.error('读取本地留言失败:', error);
+      toast('读取留言失败，请检查浏览器存储设置');
     }
   }
 
@@ -371,7 +305,13 @@ let pendingText = '';
       return;
     }
     pendingText = text;
-    nickInput.value = localStorage.getItem(NICK_KEY) || '';
+    try {
+      nickInput.value = localStorage.getItem(NICK_KEY) || '';
+    } catch (error) {
+      console.error('读取本地昵称失败:', error);
+      nickInput.value = '';
+      toast('无法读取已保存的昵称');
+    }
     modal.classList.add('show');
     setTimeout(function () { nickInput.focus(); }, 150);
   });
@@ -387,29 +327,42 @@ let pendingText = '';
     modal.classList.remove('show');
   }
 
-  async function publish() {
+  function publish() {
     const nick = nickInput.value.trim() || '匿名好友';
     const text = pendingText;
     if (!text) return;
 
     btnConfirm.disabled = true;
-    btnConfirm.textContent = '发送中…';
+    btnConfirm.textContent = '保存中…';
 
     try {
-      const msg = await API.send(nick, text);
-      try { localStorage.setItem(NICK_KEY, nick); } catch (e) {}
+      const msg = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        nick: nick.slice(0, 16),
+        text: text.slice(0, 300),
+        time: Date.now()
+      };
+      const nextMessages = sortNewestFirst([msg].concat(cache));
+      writeMessages(nextMessages);
+      cache = nextMessages;
 
-      if (mergeMessage(msg)) {
-        render(true);
-        listEl.scrollTop = 0;
+      let nickSaved = true;
+      try {
+        localStorage.setItem(NICK_KEY, nick);
+      } catch (error) {
+        console.error('保存本地昵称失败:', error);
+        nickSaved = false;
       }
 
       pendingText = '';
       inputEl.value = '';
+      render(true);
+      listEl.scrollTop = 0;
       closeModal();
-      toast('发布成功，感谢你的祝福 🎉');
-    } catch (err) {
-      toast(err.message || '发送失败，请重试');
+      toast(nickSaved ? '祝福已保存在这台设备上 🎉' : '祝福已保存，但昵称未能记住');
+    } catch (error) {
+      console.error('保存本地留言失败:', error);
+      toast('保存留言失败，请检查浏览器存储空间');
     } finally {
       btnConfirm.disabled = false;
       btnConfirm.textContent = '发布留言';
@@ -438,15 +391,13 @@ let pendingText = '';
     if (e.key === 'Escape' && modal.classList.contains('show')) closeModal();
   });
 
-  /* ---------- 可见性恢复 ---------- */
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) fetchList();
+  window.addEventListener('storage', function (event) {
+    if (event.key === MESSAGES_KEY) refresh();
   });
 
   /* ---------- 对外暴露 ---------- */
-  window.BirthdayBoard = { refresh: fetchList };
+  window.BirthdayBoard = { refresh: refresh };
 
   /* ---------- 初始化 ---------- */
-  fetchList();
-  connectSSE();
+  refresh();
 })();
